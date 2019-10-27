@@ -16,16 +16,16 @@ endif
 
 all : router
 
-endian.o   :   header/ne.h source/endian.c
+endian.o   :   ne.h endian.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -c source/endian.c
 
-routingtable.o   :   header/ne.h source/routingtable.c
+routingtable.o   :   ne.h routingtable.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -c source/routingtable.c
 
-router  :   endian.o routingtable.o source/router.c
+router  :   endian.o routingtable.o router.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) endian.o routingtable.o router.c -o router -lnsl $(SOCKETLIB)
 
-unit-test  : routingtable.o source/unit-test.c
+unit-test  : routingtable.o unit-test.c
 	$(CC) $(CFLAGS) -D $(ROUTERMODE) -D DEBUG=$(DEBUG) routingtable.o unit-test.c -o unit-test -lnsl $(SOCKETLIB)
 
 clean :
