@@ -25,12 +25,11 @@ void InitRoutingTbl (struct pkt_INIT_RESPONSE *InitResponse, int myID){
     routingTable[i].cost = InitResponse->nbrcost[i-1].cost;
     routingTable[i].next_hop = InitResponse->nbrcost[i-1].nbr;
     NumRoutes++;
-    //
-    //ifdef thing inside the structure
+
     routingTable[i].path_len = 2;
     routingTable[i].path[0] = myID;
     routingTable[i].path[1] = InitResponse->nbrcost[i-1].nbr;
-    //
+
     }
   return;
 }
@@ -42,7 +41,6 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
   int q;
   int z;
   int totalDistance;
-  
   //Making sure that the packet was sent to the proper neighbor
   if(RecvdUpdatePacket->dest_id == myID){
 
@@ -67,9 +65,8 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
 	
 	routingTable[NumRoutes].cost = RecvdUpdatePacket->route[i].cost + routingTable[q].cost;
 	routingTable[NumRoutes].path_len = RecvdUpdatePacket->route[i].path_len + 1;
-	routingTable[NumRoutes].path[0] = myID;
-	for(z=1; z < routingTable[NumRoutes].path_len; z++)
-	  routingTable[NumRoutes].path[z] = RecvdUpdatePacket->route[i].path[z-1];
+	for(z=0; z < routingTable[NumRoutes].path_len; z++)
+	  routingTable[NumRoutes].path[z+1] = RecvdUpdatePacket->route[i].path[z];
 	
 	  NumRoutes++;
       }
@@ -80,13 +77,13 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
       else if( (routingTable[q].next_hop == RecvdUpdatePacket->sender_id) | ((totalDistance < routingTable[q].cost) & (myID != RecvdUpdatePacket->route[i].next_hop)) ){
 	//Updating the cost
 	routingTable[q].cost = totalDistance;
-	//
-	//ifdef stuff
+
 	routingTable[q].path_len = RecvdUpdatePacket->route[i].path_len + 1;
 	//Updating the route if it needs to be updated (path includes source node)
-	for(z=1; z<RecvdUpdatePacket->route[i].path_len; z++)
+	for(z=0; z<RecvdUpdatePacket->route[i].path_len; z++)
 	  routingTable[q].path[z+1] = RecvdUpdatePacket->route[i].path[z];
-	//
+
+	  routingTable[q].next_hop =  routingTable[q].path[1];
       }
     }
   }
@@ -141,6 +138,12 @@ void PrintRoutes (FILE* Logfile, int myID){
 
 ////////////////////////////////////////////////////////////////
 void UninstallRoutesOnNbrDeath(int DeadNbr){
-	/* ----- YOUR CODE HERE ----- */
-	return;
+
+  int i;
+  
+  for(i=0; i<NumRoutes; i++){
+    if(routingTable[i].next_hop == DeadNbr)
+      routingTable[i].cost = INFINITY;
+  }
+  return;
 }
