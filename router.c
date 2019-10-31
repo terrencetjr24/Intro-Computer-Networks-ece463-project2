@@ -15,6 +15,7 @@
 #include <arpa/inet.h>
 #include <stdint.h>
 #include <inttypes.h>
+#include <pthread.h>
 
 //Need a header fle for threads
 
@@ -46,22 +47,36 @@ int main(int argc, const char*argv[]) {
   if((nefd == -1) | (routerfd == -1))
     return EXIT_FAILURE;
   //Sending the initial request and recieving the initial response
-  struct pkt_INIT_RESPONSE buf;
+  struct pkt_INIT_RESPONSE resp;
   struct pkt_INIT_REQUEST send;
   send.router_id = htonl(routerID);
 
   sendto(nefd, (struct pkt_INIT_REQUEST*)&send, sizeof(send), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
-  recvfrom(nefd, (struct pkt_INIT_RESPONSE*)&buf, sizeof(buf), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
+  recvfrom(nefd, (struct pkt_INIT_RESPONSE*)&resp, sizeof(resp), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
   //Converting the respons to host endian format
-  ntoh_pkt_INIT_RESPONSE(&buf);
-  
-  //Checking that I recieved the response correctly (delete after I'm done checking)
-  printf("The number of neighbors: %u\n", buf.no_nbr);
-  int i;
-  for(i = 0; i< buf.no_nbr; i++)
-    printf("The %d neighbor ID and cost to it: %d - %d\n", i, buf.nbrcost[i].nbr, buf.nbrcost[i].cost);
-    //starting the thread nonsense
-     
+  ntoh_pkt_INIT_RESPONSE(&resp);
+  //Inserting info into the routers table
+  InitRoutingTbl(&resp, routerID);
+  //Initial router#.log write, all the rest will be appends (so that I don't overwrite data)
+  char file[1024];
+  sprintf(file, "router%d.log", routerID);
+  FILE *fp = fopen(file, "w");
+  PrintRoutes(fp, routerID);
+  fclose(fp);
+
+/*
+  //starting the thread nonsense
+  pthread_t polling_thread;
+  pthread_t timing_thread;
+  pthread_mutex_t lock;
+  //Initializing the lock
+  pthread_mutex_init(&lock, NULL);
+
+  while(1){
+
+    
+  }
+  */
   return EXIT_SUCCESS;
 }
 
