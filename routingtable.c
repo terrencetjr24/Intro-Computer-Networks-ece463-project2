@@ -41,6 +41,8 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
   int q;
   int z;
   int totalDistance;
+  int changed = 0;
+  int currentRouterIsIntermediate;
   //Making sure that the packet was sent to the proper neighbor
   if(RecvdUpdatePacket->dest_id == myID){
 
@@ -48,46 +50,58 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
     for(i = 0; i<RecvdUpdatePacket->no_routes; i++) {
       totalDistance = costToNbr;
       totalDistance += RecvdUpdatePacket->route[i].cost;
-      q = 0;
-      
+      currentRouterIsIntermediate = 0;
       //Finding the destination id (in current router's table) corresponding to the neighbors destination that we're looking at
+      q = 0;
       while((routingTable[q].dest_id != RecvdUpdatePacket->route[i].dest_id) && (q < NumRoutes))
 	q++;
-
       //Adding a new router
       if(q == NumRoutes){
 	routingTable[NumRoutes].dest_id = RecvdUpdatePacket->route[i].dest_id;
-	routingTable[NumRoutes].next_hop = RecvdUpdatePacket->route[i].next_hop;
-
-	q = 0;
-	while(routingTable[q].dest_id != RecvdUpdatePacket->route[i].next_hop)
-	  q++;
-	
-	routingTable[NumRoutes].cost = RecvdUpdatePacket->route[i].cost + routingTable[q].cost;
+	routingTable[NumRoutes].next_hop = RecvdUpdatePacket->sender_id; //Changed this 11/10
+	routingTable[NumRoutes].cost = totalDistance;
 	routingTable[NumRoutes].path_len = RecvdUpdatePacket->route[i].path_len + 1;
 	for(z=0; z < routingTable[NumRoutes].path_len; z++)
 	  routingTable[NumRoutes].path[z+1] = RecvdUpdatePacket->route[i].path[z];
+	//Incrementing the number of routes since we added one
+	NumRoutes++;
+	//Added a route, so it obviously changed
+	changed = 1;
+      }      
+      //Checking if the next hop to the destination is the one sending the packet, or if the cost to get to that place is less than it was before (and the current router is not the next hop to get there)
+      else if( (routingTable[q].next_hop == RecvdUpdatePacket->sender_id) | (totalDistance < routingTable[q].cost) ){
+	//Reading through the route of to the destination to make sure that the current router isn't a step along the way (myID != any_of_the_next_hops)
+	for(z=0; z<RecvdUpdatePacket->route[i].path_len; z++){
+	  if(RecvdUpdatePacket->route[i].path[z] == myID)
+	    currentRouterIsIntermediate = 1;
+	}
+	//If the current router IS NOT a next_hop to the destination do the update
+	if(!currentRouterIsIntermediate){
+	  //Updating the cost, but first checking if it's changed
+	  if(routingTable[q].cost != totalDistance)
+	    changed = 1;
+	  routingTable[q].cost = totalDistance;
+	  //Checking if it's changed before I change it
+	  if(routingTable[q].path_len != (RecvdUpdatePacket->route[i].path_len + 1))
+	    changed = 1;
+	  routingTable[q].path_len = RecvdUpdatePacket->route[i].path_len + 1;
+	  //Updating the route if it needs to be updated (path includes source node)
+	  for(z=0; z<RecvdUpdatePacket->route[i].path_len; z++){
+	    //checking if things are changing before changing them
+	    if(routingTable[q].path[z+1] != RecvdUpdatePacket->route[i].path[z])
+	      changed = 1;
+	    routingTable[q].path[z+1] = RecvdUpdatePacket->route[i].path[z];
+	  }
 	
-	  NumRoutes++;
-      }
-
-      //Checking if the next hop to the destination is the one sending the packet
-      //or if the cost to get to that place is less than it was before
-      //(and the current router is not the next hop to get there)
-      else if( (routingTable[q].next_hop == RecvdUpdatePacket->sender_id) | ((totalDistance < routingTable[q].cost) & (myID != RecvdUpdatePacket->route[i].next_hop)) ){
-	//Updating the cost
-	routingTable[q].cost = totalDistance;
-
-	routingTable[q].path_len = RecvdUpdatePacket->route[i].path_len + 1;
-	//Updating the route if it needs to be updated (path includes source node)
-	for(z=0; z<RecvdUpdatePacket->route[i].path_len; z++)
-	  routingTable[q].path[z+1] = RecvdUpdatePacket->route[i].path[z];
-
+	  if(routingTable[q].next_hop != routingTable[q].path[1])
+	    changed = 1;
 	  routingTable[q].next_hop =  routingTable[q].path[1];
+	}
       }
     }
   }
-  return 0;
+  
+  return changed; //A zero indicates that nothing updated
 }
 
 
@@ -96,8 +110,8 @@ void ConvertTabletoPkt(struct pkt_RT_UPDATE *UpdatePacketToSend, int myID){
   UpdatePacketToSend->sender_id = myID;
   
   //POTENTIAL ERROR***
-  //How wil I send this to every neighbor (potential threading/forking oppurtunity)
-  UpdatePacketToSend->dest_id = routingTable[1].dest_id;
+  //This doesn't need to be filled until it's updated by the polling function
+  //UpdatePacketToSend->dest_id = routingTable[1].dest_id;
 
   UpdatePacketToSend->no_routes = NumRoutes;
   //Copying the routing table over to send

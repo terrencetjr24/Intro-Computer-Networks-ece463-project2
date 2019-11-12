@@ -8,4 +8,4 @@
 <R2 -> R1> Path: R2 -> R1, Cost: 1
 <R2 -> R3> Path: R2 -> R3, Cost: 6
 
-6: Converged
+5:Converged

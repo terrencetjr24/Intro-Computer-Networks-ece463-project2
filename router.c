@@ -110,13 +110,12 @@ void * polling(void* arg){
     recvfrom(nefd, (struct pkt_RT_UPDATE*)&recieved, sizeof(recieved), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
     //Converting the packet from network to host format
     ntoh_pkt_RT_UPDATE(&recieved);
-    
-    printf("recieved an update from router %d\n", recieved.sender_id);
-    
+
     //Incrementing through my routing table to find the neighbor that sent the UPDATE, and updating the last time they sent an update
     q=0;
     while(initialResp.nbrcost[q].nbr != recieved.sender_id)
       q++;
+
     pthread_mutex_lock(&lock);
     lastRouteUpdate[q] = clock();
     pthread_mutex_unlock(&lock);
@@ -147,19 +146,23 @@ void * timing(void* arg){
   int i;
   //Looping through the whole process
   while(1){
+    pthread_mutex_lock(&lock);
     dummy = clock();
-    
+    pthread_mutex_unlock(&lock);
     //After it's been "UPDATE_INTERVAL" seconds, send another update to each neighbor 
     if( ( ( (float)(dummy-lastUpdateSent) )/CLOCKS_PER_SEC) >= UPDATE_INTERVAL){
-      ConvertTabletoPkt(&sending, routerID);
       for(i=0; i<initialResp.no_nbr; i++){
+	printf("R%d Sending packet to R%d\n",routerID, initialResp.nbrcost[i].nbr);
+	ConvertTabletoPkt(&sending, routerID);
 	sending.dest_id = initialResp.nbrcost[i].nbr;
+	hton_pkt_RT_UPDATE (&sending);
 	sendto(nefd, (struct pkt_RT_UPDATE*)&sending, sizeof(sending), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t)sizeof(neAddr));
       }
       lastUpdateSent = clock();
     }
-    
+    pthread_mutex_lock(&lock);
     dummy = clock();
+    pthread_mutex_unlock(&lock);
     //After it's been "CONVERGE_TIMEOUT" seconds, check if the table has been updated. If not, set converged to TRUE and update log file
     if( ( ( (float)(dummy-lastTableUpdate) )/CLOCKS_PER_SEC) >= CONVERGE_TIMEOUT){    
       //If the table wasn't already converged (don't want to continously update the table if it's been converged)
@@ -169,13 +172,14 @@ void * timing(void* arg){
 	converged = 1;
 	sprintf(file, "router%d.log", (int)routerID);
 	FILE* fp = fopen(file, "a");
-	fprintf(fp, "\n%d: Converged\n", (int)((dummy-initialStart)/CLOCKS_PER_SEC) );
+	fprintf(fp, "%d: Converged\n", (int)((dummy-initialStart)/CLOCKS_PER_SEC) );
 	fclose(fp);
 	pthread_mutex_unlock(&lock);
       }
     }
-
+    pthread_mutex_lock(&lock);
     dummy = clock();
+    pthread_mutex_unlock(&lock);
     //Iterating through each neighbor to make sure that it's sent an UPDATE PACKET
     for(i = 0; i<initialResp.no_nbr; i++){
       //if it's been more than "FAILURE_DETECTION" seconds
