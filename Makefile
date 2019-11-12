@@ -32,3 +32,15 @@ clean :
 	rm -f *.o
 	rm -f router
 	rm -f unit-test
+
+runRouter0 :
+	./router 0 localhost 2097 3097
+
+runRouter1 :
+	./router 1 localhost 2097 4097
+
+runRouter2 :
+	./router 2 localhost 2097 5097
+
+runRouter3 :
+	./router 3 localhost 2097 6097

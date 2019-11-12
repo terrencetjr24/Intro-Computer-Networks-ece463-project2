@@ -11,4 +11,4 @@
 <R3 -> R0> Path: R3 -> R2 -> R1 -> R0, Cost: 11
 <R3 -> R1> Path: R3 -> R2 -> R1, Cost: 7
 
-7: Converged
+6:Converged
