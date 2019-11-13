@@ -14,7 +14,7 @@ void InitRoutingTbl (struct pkt_INIT_RESPONSE *InitResponse, int myID){
   //Self node decleration
   routingTable[i].dest_id = myID;
   routingTable[i].cost = 0;
-  routingTable[i].next_hop = 0; //ASSUMPTION: no router has an ID of zero
+  routingTable[i].next_hop = myID; //ASSUMPTION: that this isn't an issue
   routingTable[i].path_len = 1;
   routingTable[i].path[0] = myID;
   routingTable[i].path[1] = myID;
@@ -55,12 +55,14 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
       q = 0;
       while((routingTable[q].dest_id != RecvdUpdatePacket->route[i].dest_id) && (q < NumRoutes))
 	q++;
-      //Adding a new router
+      //Adding a new router, if it's not already in the table
       if(q == NumRoutes){
 	routingTable[NumRoutes].dest_id = RecvdUpdatePacket->route[i].dest_id;
 	routingTable[NumRoutes].next_hop = RecvdUpdatePacket->sender_id; //Changed this 11/10
 	routingTable[NumRoutes].cost = totalDistance;
 	routingTable[NumRoutes].path_len = RecvdUpdatePacket->route[i].path_len + 1;
+	//Ensuring that the first step on a path is the current router
+	  routingTable[q].path[0] = myID;
 	for(z=0; z < routingTable[NumRoutes].path_len; z++)
 	  routingTable[NumRoutes].path[z+1] = RecvdUpdatePacket->route[i].path[z];
 	//Incrementing the number of routes since we added one
@@ -85,6 +87,8 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
 	  if(routingTable[q].path_len != (RecvdUpdatePacket->route[i].path_len + 1))
 	    changed = 1;
 	  routingTable[q].path_len = RecvdUpdatePacket->route[i].path_len + 1;
+	  //Ensuring that the first step on a path is the current router
+	  routingTable[q].path[0] = myID;
 	  //Updating the route if it needs to be updated (path includes source node)
 	  for(z=0; z<RecvdUpdatePacket->route[i].path_len; z++){
 	    //checking if things are changing before changing them

@@ -36,6 +36,7 @@ clock_t lastTableUpdate;
 clock_t lastRouteUpdate[MAX_ROUTERS];
 clock_t lastUpdateSent;
 int converged;
+int deadNBRs[MAX_ROUTERS];
 
 int main(int argc, const char*argv[]) {
   int nePort;
@@ -59,12 +60,14 @@ int main(int argc, const char*argv[]) {
   struct pkt_INIT_REQUEST send;
   send.router_id = htonl(routerID);
   sendto(nefd, (struct pkt_INIT_REQUEST*)&send, sizeof(send), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
+
   //************//
   //After turning the router off and turning it back on, I get stuck right below this line, FIX THIS LATER
   //Might need to change the flag, currently its MSG_WAITALL
   //if I set it non-blocking it will continuously return a -1
   recvfrom(nefd, (struct pkt_INIT_RESPONSE*)&initialResp, sizeof(initialResp), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
   //***********//
+  
   //"Starting time" of router (and the first time it's sent an "update"
   initialStart = clock();
   lastUpdateSent = clock();
@@ -75,8 +78,10 @@ int main(int argc, const char*argv[]) {
   lastTableUpdate = initialStart;
   converged = 0;
   //Saying that each neighbor sent an update on initialization (to give each init value)
-  for(i = 0; i < initialResp.no_nbr; i++)
-    lastRouteUpdate[i] = initialStart; 
+  for(i = 0; i < initialResp.no_nbr; i++){
+    lastRouteUpdate[i] = initialStart;
+    deadNBRs[i] = 0;
+  }
   //Initial router#.log write, all the rest will be appends (so that I don't overwrite data)
   char file[16];
   sprintf(file, "router%d.log", routerID);
@@ -116,22 +121,25 @@ void * polling(void* arg){
     while(initialResp.nbrcost[q].nbr != recieved.sender_id)
       q++;
 
+    //Lock around global variable, and signaling that if the sender was thought to be dead it isn't any more
     pthread_mutex_lock(&lock);
     lastRouteUpdate[q] = clock();
+    deadNBRs[q] = 0;
     pthread_mutex_unlock(&lock);
-    
+
+    //Lock around file access & global variabla
+    pthread_mutex_lock(&lock);
     //if the routes are actually updated I will update the time of the most recent update and update the log file
     if(UpdateRoutes(&recieved, initialResp.nbrcost[q].cost, routerID)){
       converged = 0;
-      pthread_mutex_lock(&lock);
       lastTableUpdate = clock();
       pthread_mutex_unlock(&lock);
       sprintf(file, "router%d.log", routerID);
       fp = fopen(file, "a");
       PrintRoutes(fp, routerID);
       fclose(fp);
-      pthread_mutex_unlock(&lock);
     }
+    pthread_mutex_unlock(&lock);
   }
 }
 
@@ -144,22 +152,31 @@ void * timing(void* arg){
   struct pkt_RT_UPDATE sending;
   char file[16];
   int i;
+  FILE* fp;
+
+  //int q;
+  //int z;
   //Looping through the whole process
   while(1){
+    //Want an accurate clock
     pthread_mutex_lock(&lock);
     dummy = clock();
     pthread_mutex_unlock(&lock);
     //After it's been "UPDATE_INTERVAL" seconds, send another update to each neighbor 
     if( ( ( (float)(dummy-lastUpdateSent) )/CLOCKS_PER_SEC) >= UPDATE_INTERVAL){
+      //Lock around global variable access (sending all updates before the table can change)
+      pthread_mutex_lock(&lock);
       for(i=0; i<initialResp.no_nbr; i++){
-	printf("R%d Sending packet to R%d\n",routerID, initialResp.nbrcost[i].nbr);
+	//printf("R%d Sending packet to R%d\n",routerID, initialResp.nbrcost[i].nbr);
 	ConvertTabletoPkt(&sending, routerID);
 	sending.dest_id = initialResp.nbrcost[i].nbr;
 	hton_pkt_RT_UPDATE (&sending);
 	sendto(nefd, (struct pkt_RT_UPDATE*)&sending, sizeof(sending), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t)sizeof(neAddr));
       }
+      pthread_mutex_unlock(&lock);
       lastUpdateSent = clock();
     }
+    //Want an accurate clock
     pthread_mutex_lock(&lock);
     dummy = clock();
     pthread_mutex_unlock(&lock);
@@ -171,21 +188,32 @@ void * timing(void* arg){
 	pthread_mutex_lock(&lock);
 	converged = 1;
 	sprintf(file, "router%d.log", (int)routerID);
-	FILE* fp = fopen(file, "a");
+	fp = fopen(file, "a");
 	fprintf(fp, "%d: Converged\n", (int)((dummy-initialStart)/CLOCKS_PER_SEC) );
 	fclose(fp);
 	pthread_mutex_unlock(&lock);
       }
     }
+    //Want an accurates clock
     pthread_mutex_lock(&lock);
     dummy = clock();
     pthread_mutex_unlock(&lock);
     //Iterating through each neighbor to make sure that it's sent an UPDATE PACKET
     for(i = 0; i<initialResp.no_nbr; i++){
       //if it's been more than "FAILURE_DETECTION" seconds
-      if(( ( (float)(dummy-lastRouteUpdate[i]) )/CLOCKS_PER_SEC) >= FAILURE_DETECTION){
+      if((deadNBRs[i] == 0)&& (( ( (float)(dummy-lastRouteUpdate[i]) )/CLOCKS_PER_SEC) >= FAILURE_DETECTION)){
+	//Lock around global variable access and file writing
+	pthread_mutex_unlock(&lock);
 	//calling the function to say that this node is "dead"
 	UninstallRoutesOnNbrDeath(initialResp.nbrcost[i].nbr);
+	deadNBRs[i] = 1;
+	converged = 0;
+	lastTableUpdate = clock();
+	sprintf(file, "router%d.log", routerID);
+	fp = fopen(file, "a");
+	PrintRoutes(fp, routerID);
+	fclose(fp);
+	pthread_mutex_unlock(&lock);
       }
     }
   }
