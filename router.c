@@ -59,14 +59,12 @@ int main(int argc, const char*argv[]) {
   //Sending the initial request and recieving the initial response
   struct pkt_INIT_REQUEST send;
   send.router_id = htonl(routerID);
-  sendto(nefd, (struct pkt_INIT_REQUEST*)&send, sizeof(send), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
 
-  //************//
-  //After turning the router off and turning it back on, I get stuck right below this line, FIX THIS LATER
-  //Might need to change the flag, currently its MSG_WAITALL
-  //if I set it non-blocking it will continuously return a -1
-  recvfrom(nefd, (struct pkt_INIT_RESPONSE*)&initialResp, sizeof(initialResp), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
-  //***********//
+  //To get the send the router to turn off and back on properly I need to send to routerfd and the ne address
+  //sendto(nefd, (struct pkt_INIT_REQUEST*)&send, sizeof(send), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
+  sendto(routerfd, (struct pkt_INIT_REQUEST*)&send, sizeof(send), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t*)sizeof(neAddr));
+  //recvfrom(nefd, (struct pkt_INIT_RESPONSE*)&initialResp, sizeof(initialResp), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
+  recvfrom(routerfd, (struct pkt_INIT_RESPONSE*)&initialResp, sizeof(initialResp), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t*)sizeof(neAddr));
   
   //"Starting time" of router (and the first time it's sent an "update"
   initialStart = clock();
@@ -88,7 +86,9 @@ int main(int argc, const char*argv[]) {
   FILE *fp = fopen(file, "w");
   PrintRoutes(fp, routerID);
   fclose(fp);
- 
+
+  printf("Router: R%d is running\n", routerID);
+  
   //starting the thread nonsense  
   pthread_t polling_thread_id;
   pthread_t timing_thread_id;
@@ -112,7 +112,8 @@ void * polling(void* arg){
   //Continuously looping through this process
   while(1){
     //Waiting until I recieve a packet from the NE (the MSG_WAITALL flag does the waiting)
-    recvfrom(nefd, (struct pkt_RT_UPDATE*)&recieved, sizeof(recieved), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
+    //recvfrom(nefd, (struct pkt_RT_UPDATE*)&recieved, sizeof(recieved), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
+    recvfrom(routerfd, (struct pkt_RT_UPDATE*)&recieved, sizeof(recieved), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
     //Converting the packet from network to host format
     ntoh_pkt_RT_UPDATE(&recieved);
 
@@ -171,7 +172,8 @@ void * timing(void* arg){
 	ConvertTabletoPkt(&sending, routerID);
 	sending.dest_id = initialResp.nbrcost[i].nbr;
 	hton_pkt_RT_UPDATE (&sending);
-	sendto(nefd, (struct pkt_RT_UPDATE*)&sending, sizeof(sending), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t)sizeof(neAddr));
+	//sendto(nefd, (struct pkt_RT_UPDATE*)&sending, sizeof(sending), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t)sizeof(neAddr));
+	sendto(routerfd, (struct pkt_RT_UPDATE*)&sending, sizeof(sending), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t)sizeof(neAddr));
       }
       pthread_mutex_unlock(&lock);
       lastUpdateSent = clock();
