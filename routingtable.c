@@ -50,6 +50,11 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
     for(i = 0; i<RecvdUpdatePacket->no_routes; i++) {
       totalDistance = costToNbr;
       totalDistance += RecvdUpdatePacket->route[i].cost;
+
+      
+      //printf("The total distance to R%d: %d\n", RecvdUpdatePacket->route[i].dest_id, totalDistance);
+
+      
       currentRouterIsIntermediate = 0;
       //Finding the destination id (in current router's table) corresponding to the neighbors destination that we're looking at
       q = 0;
@@ -79,16 +84,17 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
 	}
 	//If the current router IS NOT a next_hop to the destination do the update
 	if(!currentRouterIsIntermediate){
-	  //Updating the cost, but first checking if it's changed (and if it's less than infinity, otherwise I don't care about this sort of change)
-	  if((routingTable[q].cost != totalDistance) && (totalDistance < INFINITY))
-	    changed = 1;
 	  
+	  //Updating the cost, but first checking if it's changed
+	  //If the current cost is different from the incoming cost, and if both 'the current cost IS NOT INFINITY' AND 'the incoming cost IS NOT greater than INFINTY' 
+	  if((routingTable[q].cost != totalDistance) && (!((routingTable[q].cost == INFINITY) && (totalDistance >= INFINITY))) ) 
+	    changed = 1;
+
 	  //checking if total Distance is greater than INFINITY, so that I can keep the max cost to INFINITY
 	  if(totalDistance <= INFINITY)
 	    routingTable[q].cost = totalDistance;
 	  else
 	    routingTable[q].cost = INFINITY;
-	  
 	  //Checking if it's changed before I change it
 	  if(routingTable[q].path_len != (RecvdUpdatePacket->route[i].path_len + 1))
 	    changed = 1;
@@ -105,18 +111,18 @@ int UpdateRoutes(struct pkt_RT_UPDATE *RecvdUpdatePacket, int costToNbr, int myI
 	
 	  if(routingTable[q].next_hop != routingTable[q].path[1])
 	    changed = 1;
-	  routingTable[q].next_hop =  routingTable[q].path[1];
+	  routingTable[q].next_hop =  RecvdUpdatePacket->sender_id; //routingTable[q].path[1];
 	}
       }
     }
   }
+
   /*
-  //Setting costs back to INFINITY if they get higher
   for(i=0; i<NumRoutes; i++){
-    if(routingTable[i].cost > INFINITY)
-      routingTable[i].cost = INFINITY;
+    printf("For destination R%d, the next hop is R%d\n", routingTable[i].dest_id, routingTable[i].next_hop); 
   }
   */
+  
   return changed; //A zero indicates that nothing updated
 }
 
