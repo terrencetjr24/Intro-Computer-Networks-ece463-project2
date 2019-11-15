@@ -27,6 +27,8 @@ void* timing(void*);
 //Global Variables (in addition to the two in routingtable.c)
 int nefd, routerfd;
 struct sockaddr_in neAddr, routerAddr;
+socklen_t sixthParamOfRecv;
+
 pthread_mutex_t lock;
 int routerID;
 struct pkt_INIT_RESPONSE initialResp;
@@ -59,18 +61,21 @@ int main(int argc, const char*argv[]) {
   //Sending the initial request and recieving the initial response
   struct pkt_INIT_REQUEST send;
   send.router_id = htonl(routerID);
-
   //To get the send the router to turn off and back on properly I need to send to routerfd and the ne address
-  //sendto(nefd, (struct pkt_INIT_REQUEST*)&send, sizeof(send), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
-  sendto(routerfd, (struct pkt_INIT_REQUEST*)&send, sizeof(send), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t*)sizeof(neAddr));
-  //recvfrom(nefd, (struct pkt_INIT_RESPONSE*)&initialResp, sizeof(initialResp), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
-  recvfrom(routerfd, (struct pkt_INIT_RESPONSE*)&initialResp, sizeof(initialResp), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t*)sizeof(neAddr));
+  sixthParamOfRecv = sizeof(struct sockaddr_in);
+  
+  //sendto(routerfd, (struct pkt_INIT_REQUEST*)&send, sizeof(send), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t*)sizeof(neAddr));
+  sendto(routerfd, (struct pkt_INIT_REQUEST*)&send, sizeof(send), MSG_CONFIRM, (const struct sockaddr *) &neAddr, sixthParamOfRecv);
+  //recvfrom(routerfd, (struct pkt_INIT_RESPONSE*)&initialResp, sizeof(initialResp), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t*)sizeof(neAddr));
+  recvfrom(routerfd, (struct pkt_INIT_RESPONSE*)&initialResp, sizeof(initialResp), MSG_WAITALL, (const struct sockaddr *) &neAddr, &sixthParamOfRecv);
+
+  
   
   //"Starting time" of router (and the first time it's sent an "update"
   initialStart = clock();
   lastUpdateSent = clock();
   //Converting the response to host endian format
-  ntoh_pkt_INIT_RESPONSE(&initialResp);
+  ntoh_pkt_INIT_RESPONSE(&initialResp);  
   //Inserting info into the routers table (so updating the table, and because of this update obviously the table hasn't converged)
   InitRoutingTbl(&initialResp, routerID);
   lastTableUpdate = initialStart;
@@ -87,7 +92,7 @@ int main(int argc, const char*argv[]) {
   PrintRoutes(fp, routerID);
   fclose(fp);
 
-  printf("Router: R%d is running\n", routerID);
+  //printf("Router: R%d is running\n", routerID);
   
   //starting the thread nonsense  
   pthread_t polling_thread_id;
@@ -112,8 +117,8 @@ void * polling(void* arg){
   //Continuously looping through this process
   while(1){
     //Waiting until I recieve a packet from the NE (the MSG_WAITALL flag does the waiting)
-    //recvfrom(nefd, (struct pkt_RT_UPDATE*)&recieved, sizeof(recieved), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
-    recvfrom(routerfd, (struct pkt_RT_UPDATE*)&recieved, sizeof(recieved), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
+    //recvfrom(routerfd, (struct pkt_RT_UPDATE*)&recieved, sizeof(recieved), MSG_WAITALL, (const struct sockaddr *) &neAddr, (socklen_t *)sizeof(neAddr));
+    recvfrom(routerfd, (struct pkt_RT_UPDATE*)&recieved, sizeof(recieved), MSG_WAITALL, (const struct sockaddr *) &neAddr, &sixthParamOfRecv);
     //Converting the packet from network to host format
     ntoh_pkt_RT_UPDATE(&recieved);
 
@@ -150,10 +155,12 @@ void * timing(void* arg){
   //CONVERGE TIMEOUT, to see when my router converges onto the proper routes
   //FAILURE DETECTION, to see if anotehr router has timed out, an need to be "unistalled" 
   clock_t dummy;
-  struct pkt_RT_UPDATE sending;
+  //socklen_t thirdParam = sizeof(struct pkt_RT_UPDATE);
   char file[16];
   int i;
   FILE* fp;
+  struct pkt_RT_UPDATE sending;
+  memset(&sending, 0, sizeof(struct pkt_RT_UPDATE));
 
   //int q;
   //int z;
@@ -168,12 +175,12 @@ void * timing(void* arg){
       //Lock around global variable access (sending all updates before the table can change)
       pthread_mutex_lock(&lock);
       for(i=0; i<initialResp.no_nbr; i++){
-	//printf("R%d Sending packet to R%d\n",routerID, initialResp.nbrcost[i].nbr);
 	ConvertTabletoPkt(&sending, routerID);
 	sending.dest_id = initialResp.nbrcost[i].nbr;
 	hton_pkt_RT_UPDATE (&sending);
-	//sendto(nefd, (struct pkt_RT_UPDATE*)&sending, sizeof(sending), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t)sizeof(neAddr));
 	sendto(routerfd, (struct pkt_RT_UPDATE*)&sending, sizeof(sending), MSG_CONFIRM, (const struct sockaddr *) &neAddr, (socklen_t)sizeof(neAddr));
+	
+	//sendto(routerfd, (struct pkt_RT_UPDATE*) &sending, thirdParam, MSG_CONFIRM, (const struct sockaddr *)&neAddr, sixthParamOfRecv);
       }
       pthread_mutex_unlock(&lock);
       lastUpdateSent = clock();
