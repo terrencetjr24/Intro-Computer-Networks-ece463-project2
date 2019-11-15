@@ -6,17 +6,17 @@ Basic 5_routers.conf Convergence: does not always converge to correct routing ta
 Basic 10_routers.conf Convergence: crashes once in a while
 
 BASIC CONVERGENCE TEST CASES:
-Basic 2_routers.conf Convergence:
-Basic 4_routers.conf Convergence:
-Basic 5_routers.conf Convergence:
-Basic 10_routers.conf Convergence:
+Basic 2_routers.conf Convergence: consistently gets correct routing table
+Basic 4_routers.conf Convergence: consistently gets correct routing table
+Basic 5_routers.conf Convergence: consistently gets correct routing table
+Basic 10_routers.conf Convergence: consistently gets correct routing table
 
 VALGRIND TEST CASE:
-Indicate Topology:
-Result of Valgrind:
+Indicate Topology: 2_routers, 4_routers, 5_routers, 10_routers
+Result of Valgrind: 0 errors for all test cases, but memory leaks are present wit bytes being "possibly lost"
 
 KILL AND REVIVE ROUTER TEST CASE:
-Indicate Topology:
-Indicate Router to kill/revive:
-Convergence after Killing Router:
-Convergence after RevivingRouter:
+Indicate Topology: 2_routers, 4_routers, 5_routers, 10_routers
+Indicate Router to kill/revive: r1, r1, r2, r4
+Convergence after Killing Router: all cases converge
+Convergence after RevivingRouter: all cases converge
